@@ -1,0 +1,49 @@
+### PostgreSQL Credentials
+# postgres
+# GlobantChallenge
+
+
+
+### Login to PostgreSQL
+# psql -U postgres
+
+
+
+### Creation of the database
+
+CREATE DATABASE globant
+    WITH 
+        ENCODING 'UTF-8'
+
+
+
+### Change database
+
+\c globant
+
+
+
+### Creation of tables in the database
+
+CREATE TABLE DEPARTMENTS(
+   ID INT PRIMARY KEY NOT NULL,
+   NAME TEXT
+);
+
+CREATE TABLE JOBS(
+   ID INT PRIMARY KEY NOT NULL,
+   NAME TEXT
+);
+
+CREATE TABLE HIRED_EMPLOYEES(
+   ID INT PRIMARY KEY NOT NULL,
+   NAME TEXT,
+   DATETIME TEXT,
+   DEPARTMENT_ID INT,
+   JOB_ID INT
+);
+
+CREATE TABLE COMPANIES(
+   ID INT PRIMARY KEY NOT NULL,
+   NAME TEXT
+);
