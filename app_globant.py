@@ -26,10 +26,19 @@ except (Exception, psycopg2.Error) as error:
 
 ### Definition of Classes
 
+# Class File
+class File(BaseModel):
+    filename: str
+
+# Class File
+class Table(BaseModel):
+    tablename: str
+
 # Class Department
 class Department(BaseModel):
     department_id: int = Field(alias="id")
     name: str
+
 
 
 
@@ -46,16 +55,6 @@ def select_table(cur, table):
         output_ls = []
     return output_ls
 
-# # Read file and copy to database
-# dep_filename = 'departments.csv'
-# with open(dep_filename, 'r') as f:
-#     cur.copy_from(f, 'companies', sep=",")
-#     cxn.commit()
-
-# # Retriving data from database
-# cur.execute("SELECT * FROM departments;")
-# departments = list(cur.fetchall())
-
 # # Load departments using the class Deparment
 # departments=[]
 # for index, row in df_dep.iterrows():
@@ -65,25 +64,24 @@ def select_table(cur, table):
 # GET request for retrieving the list of departments
 @app_globant.get("/departments")
 async def get_departments():
-    return select_table(cur, 'companies')
+    return select_table(cur, 'departments')
 
-# @app.post("/departments", status_code=201)
-# async def add_deparments():
+# POST request to load data into the database
+@app_globant.post("/departments", status_code=201)
+async def add_deparments(file: File, table: Table):
 
-#     # Read file and copy to database
-#     dep_filename = 'departments.csv'
-#     with open(dep_filename, 'r') as f:
-#         cur.copy_from(f, 'departments', sep=",")
-#         cxn.commit()
-#         cur.execute("SELECT * FROM departments;")
-#         departments = list(cur.fetchall())
+    # Read file and copy to database
+    filename = file.filename
+    tablename = table.tablename
+    with open(filename, 'r') as f:
+        cur.copy_from(f, tablename, sep=",")
+        cxn.commit()
 
-#     return country
-
+    return select_table(cur, 'departments')
 
 
-# #closing database connection.
-#     if(cxn):
-#         cur.close()
-#         cxn.close()
-#     print("PostgreSQL connection is closed")
+# # Closing database connection.
+# if(cxn):
+#     cur.close()
+#     cxn.close()
+# print("PostgreSQL connection is closed")
