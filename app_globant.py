@@ -47,7 +47,7 @@ class Department(BaseModel):
 
 ### Core functions for HTTP methods
 
-# Retriving data from database (for GET methods)
+# Retriving data from database (used by a GET method)
 def retrieve_table(cur, table):
     cur.execute("SELECT * FROM {} ORDER BY id;".format(table))
     raw_ls = list(cur.fetchall())
@@ -58,7 +58,20 @@ def retrieve_table(cur, table):
     return output_ls
 
 
-# Batch load to database (for POST methods)
+# Delete and create again a table (used by a GET method)
+def restore_table(cur, table):
+    if table in ["departments", "jobs", "hired_employees"]:
+        # Delete table
+        cur.execute("DROP TABLE {};".format(table))
+        # Create empty table
+        cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, NAME TEXT );".format(table))
+        # Result
+        return {"Restored table {}. Now it's empty.".format(table)}
+    else:
+        return {"This table does not belong to the database."}
+
+
+# Batch load to database (used by a POST method)
 def batch_load(cur, filename, sta_ind, end_ind, cols_table):
 
     nrows = end_ind-sta_ind+1
@@ -128,6 +141,15 @@ async def get_departments():
     return retrieve_table(cur, 'departments')
 
 
+
+# GET request for restoring a table
+@app_globant.get("/restore/{table}")
+async def restore(table):
+    # Call restore_table function
+    return restore_table(cur, table)
+
+
+
 # POST request to load data into the database
 @app_globant.post("/departments", status_code=201)
 async def add_deparments(file: File):
@@ -142,11 +164,3 @@ async def add_deparments(file: File):
 
     # Call batch_load function
     return batch_load(cur, filename, sta_ind, end_ind, cols_table)
-
-
-
-# # Closing database connection.
-# if(cxn):
-#     cur.close()
-#     cxn.close()
-# print("PostgreSQL connection is closed")
