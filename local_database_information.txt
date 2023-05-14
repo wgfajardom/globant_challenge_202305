@@ -25,25 +25,19 @@ CREATE DATABASE globant
 
 ### Creation of tables in the database
 
-CREATE TABLE DEPARTMENTS(
-   ID INT PRIMARY KEY NOT NULL,
-   NAME TEXT
-);
+CREATE TABLE DEPARTMENTS( ID INT PRIMARY KEY NOT NULL, NAME TEXT );
+CREATE TABLE JOBS( ID INT PRIMARY KEY NOT NULL, NAME TEXT );
+CREATE TABLE HIRED_EMPLOYEES( ID INT PRIMARY KEY NOT NULL, NAME TEXT, DATETIME TEXT, DEPARTMENT_ID INT, JOB_ID INT );
 
-CREATE TABLE JOBS(
-   ID INT PRIMARY KEY NOT NULL,
-   NAME TEXT
-);
 
-CREATE TABLE HIRED_EMPLOYEES(
-   ID INT PRIMARY KEY NOT NULL,
-   NAME TEXT,
-   DATETIME TEXT,
-   DEPARTMENT_ID INT,
-   JOB_ID INT
-);
 
-CREATE TABLE COMPANIES(
-   ID INT PRIMARY KEY NOT NULL,
-   NAME TEXT
-);
+### Update hired_employees table
+
+UPDATE hired_employees SET department_id = NULL WHERE department_id = -999;
+UPDATE hired_employees SET job_id = NULL WHERE job_id = -999;
+
+
+
+### Check table schema
+
+SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'hired_employees' ORDER By ordinal_position;
