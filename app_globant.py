@@ -173,8 +173,11 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
         query = "INSERT INTO %s(%s) VALUES %%s" % (tablename, cols)
         extras.execute_values(cur, query, tuples)
         cxn.commit()
-        for key, value in dc_null_placeholders.items():
-            cur.execute("UPDATE {} SET {} = NULL WHERE {} = {};".format(tablename, key, key, value))
+        for key, value in tableschema.items():
+            if value == 'int':
+                cur.execute("UPDATE {} SET {} = NULL WHERE {} = {};".format(tablename, key, key, dc_null_placeholders[key]))
+            else:
+                cur.execute("UPDATE {} SET {} = NULL WHERE {} = '{}';".format(tablename, key, key, dc_null_placeholders[key]))
         cxn.commit()
 
         # Response
