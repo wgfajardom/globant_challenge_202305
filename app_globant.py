@@ -4,7 +4,7 @@
 from fastapi import FastAPI
 # from fastapi import Body
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union
 # from typing import Annotated
 import pandas as pd
 # import numpy as np
@@ -37,6 +37,10 @@ class File(BaseModel):
     sta_ind: Optional[int] = 1
     end_ind: Optional[int] = 1000
 
+class Table(BaseModel):
+    tablename: str
+    tableschema: dict
+
 # Class Department
 class Department(BaseModel):
     department_id: int = Field(alias="dep_id")
@@ -52,8 +56,8 @@ class Hired_Employee(BaseModel):
     hired_employee_id: int = Field(alias="hie_id")
     name: str
     datetime: str
-    department_id: int
-    job_id: int
+    department_id: Union[int, None]
+    job_id: Union[int, None]
 
 
 
@@ -64,7 +68,6 @@ def retrieve_table(cur, table):
     cur.execute("SELECT * FROM {} ORDER BY id;".format(table))
     cxn.commit()
     raw_ls = list(cur.fetchall())
-    print(raw_ls)
     if len(raw_ls) > 0:
         if table=="departments":
             output_ls = [Department(dep_id=elem[0], name=elem[1]) for elem in raw_ls]
@@ -72,14 +75,15 @@ def retrieve_table(cur, table):
             output_ls = [Job(job_id=elem[0], name=elem[1]) for elem in raw_ls]
         if table=="hired_employees":
             output_ls = [Hired_Employee(hie_id=elem[0], name=elem[1], datetime=elem[2], department_id=elem[3], job_id=elem[4]) for elem in raw_ls]
+        return output_ls
     else:
-        output_ls = {"The table {} do not exist in the database.".format(table)}
-    return output_ls
+        return {"The table {} is empty".format(table)}
+
 
 
 
 # Delete and create again a table (used by a GET method)
-def restore_table(cur, table):
+def restore_tb(cur, table):
     if table in ["departments", "jobs", "hired_employees"]:
         # Delete table
         cur.execute("DROP TABLE {};".format(table))
@@ -98,17 +102,44 @@ def restore_table(cur, table):
 
 
 
+# Check schema of a table (used by a GET method)
+def check_sch(cur, table):
+    if table in ["departments", "jobs", "hired_employees"]:
+        # Retrieve table schema
+        cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{}' ORDER By ordinal_position;".format(table))
+        cxn.commit()
+        retrieved_schema = list(cur.fetchall())
+        # Result
+        url_post = "http://127.0.0.1:8000/{}".format(table)
+        return {
+            "table_name":"{}".format(table), 
+            "table_schema":"{}".format(retrieved_schema)
+            }
+    else:
+        return {"This table does not belong to the database."}
+
+
+
 # Batch load to database (used by a POST method)
-def batch_load(cur, filename, sta_ind, end_ind, cols_table):
+def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
 
     nrows = end_ind-sta_ind+1
-    tablename = filename.split(".")[0]
+    cols_table = list(tableschema.keys())
+    print(cols_table)
+    print(tableschema)
 
     if (sta_ind >= 1) and (end_ind >= sta_ind) and (nrows <= 1000):  
 
         # Read file using range of indexes
+
         df = pd.read_csv(filename, sep=",", names=cols_table, skiprows=sta_ind-1, nrows=nrows)
-        df = df.fillna(int(-999))
+        df = df.fillna(-999)
+        try:
+            df = df.astype(tableschema)
+        except:
+            url_get_schema = ""
+            return {"Schema not valid. Verify the schema of the destination table. For this use http://127.0.0.1:8000/check_schema/{}".format(tablename)}
+            sys.exit()
 
         # List of ids to insert
         input_ids = set(list(df["id"].values))
@@ -187,46 +218,28 @@ async def get_hired_employees():
 
 
 # GET request for restoring a table
-@app_globant.get("/restore/{table}")
-async def restore(table):
-    # Call restore_table function
-    return restore_table(cur, table)
+@app_globant.get("/restore_table/{table}")
+async def restore_table(table):
+    # Call restore_tb function
+    return restore_tb(cur, table)
 
 
-# POST request to load data of the table departments into the database
-@app_globant.post("/departments", status_code=201)
-async def add_deparments(file: File):
+# GET request for restoring a table
+@app_globant.get("/check_schema/{table}")
+async def check_schema(table):
+    # Call check_sch function
+    return check_sch(cur, table)
+
+
+# POST request to load data of a table into the database
+@app_globant.post("/add_table", status_code=201)
+async def add_deparments(file: File, table: Table):
     # Load parameters
     filename = file.filename
     sta_ind = file.sta_ind
     end_ind = file.end_ind
-    # Parameter exclusive for the table departments
-    cols_table = ["id", "name"]
+    tablename = table.tablename
+    tableschema = table.tableschema
     # Call batch_load function
-    return batch_load(cur, filename, sta_ind, end_ind, cols_table)
+    return batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema)
 
-
-# POST request to load data of the table jobs into the database
-@app_globant.post("/jobs", status_code=201)
-async def add_jobs(file: File):
-    # Load parameters
-    filename = file.filename
-    sta_ind = file.sta_ind
-    end_ind = file.end_ind
-    # Parameter exclusive for the table jobs
-    cols_table = ["id", "name"]
-    # Call batch_load function
-    return batch_load(cur, filename, sta_ind, end_ind, cols_table)
-
-
-# POST request to load data of the table hired_employees into the database
-@app_globant.post("/hired_employees", status_code=201)
-async def add_hired_employees(file: File):
-    # Load parameters
-    filename = file.filename
-    sta_ind = file.sta_ind
-    end_ind = file.end_ind
-    # Parameter exclusive for the table hired_employees
-    cols_table = ["id", "name", "datetime", "department_id", "job_id"]
-    # Call batch_load function
-    return batch_load(cur, filename, sta_ind, end_ind, cols_table)
