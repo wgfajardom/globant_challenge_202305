@@ -89,9 +89,9 @@ def restore_tb(cur, table):
         cur.execute("DROP TABLE {};".format(table))
         # Create empty table
         if table=="departments":
-            cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, NAME TEXT );".format(table))
+            cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, DEPARTMENT TEXT );".format(table))
         if table=="jobs":
-            cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, NAME TEXT );".format(table))
+            cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, JOB TEXT );".format(table))
         if table=="hired_employees":
             cur.execute("CREATE TABLE {}( ID INT PRIMARY KEY NOT NULL, NAME TEXT, DATETIME TEXT, DEPARTMENT_ID INT, JOB_ID INT );".format(table))
         cxn.commit()
@@ -125,15 +125,23 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
 
     nrows = end_ind-sta_ind+1
     cols_table = list(tableschema.keys())
-    print(cols_table)
-    print(tableschema)
 
     if (sta_ind >= 1) and (end_ind >= sta_ind) and (nrows <= 1000):  
 
         # Read file using range of indexes
-
         df = pd.read_csv(filename, sep=",", names=cols_table, skiprows=sta_ind-1, nrows=nrows)
-        df = df.fillna(-999)
+        
+        # Replacing null values by placeholders (null values cannot be inserted into the table so far)
+        null_ph_int = -999
+        null_ph_str = 'NULL'
+        dc_null_placeholders = dict()
+        for key, value in tableschema.items():
+            if value == 'int':
+                dc_null_placeholders[key] = null_ph_int
+            else:
+                dc_null_placeholders[key] = null_ph_str
+        df = df.fillna(value=dc_null_placeholders)
+
         try:
             df = df.astype(tableschema)
         except:
@@ -165,8 +173,8 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
         query = "INSERT INTO %s(%s) VALUES %%s" % (tablename, cols)
         extras.execute_values(cur, query, tuples)
         cxn.commit()
-        cur.execute("UPDATE hired_employees SET department_id = NULL WHERE department_id = -999;")
-        cur.execute("UPDATE hired_employees SET job_id = NULL WHERE job_id = -999;")
+        for key, value in dc_null_placeholders.items():
+            cur.execute("UPDATE {} SET {} = NULL WHERE {} = {};".format(tablename, key, key, value))
         cxn.commit()
 
         # Response
@@ -176,7 +184,7 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
         if (la_ids > 0) and (ln_ids > 0):
             response = {"Batch load successful. In total {} registers were inserted. They correspond to ids {}. There were {} registers that already exist on table {}, corresponding to ids {}. Check your results using {}".format(la_ids, allow_ids, ln_ids, tablename, nonal_ids, url_get_table)}
         elif (ln_ids == 0):
-            response = {"Batch load successful. In total {} registers were inserted. They correspond to ids {}. Any existing result overlap with new ones, or there were not existing registers on table {}. Check your results using {}.".format(la_ids, allow_ids, tablename, url_get_table)}
+            response = {"Batch load successful. In total {} registers were inserted. They correspond to ids {}. Any existing register overlaps with new ones, or there were not existing registers on table {}. Check your results using {}.".format(la_ids, allow_ids, tablename, url_get_table)}
         elif (la_ids == 0):
             response = {"Batch load unsuccessful. No registers were inserted, because all of them already exist on table {}. Check the table using {}".format(tablename, url_get_table)}
         else:
