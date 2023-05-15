@@ -42,8 +42,10 @@ This repository is composed by several files. Here are their descriptions:
 | app.py | Misc | Template used as reference for the API |
 | read_local_data.py | Misc | File useful for manual tests in Python |
 | insert_data_local_db.py | Misc | First attemp to connect the API and the database |
+| Guide_Coding_Challenge.pdf | Core | Instructions of the tasks of the Coding Challenge |
 | LICENSE | Core | License of the repository |
 | README.md | Core | The file you are reading right now |
+
 
 
 
