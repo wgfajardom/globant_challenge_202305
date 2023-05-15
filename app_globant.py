@@ -43,21 +43,30 @@ class Table(BaseModel):
 
 # Class Department
 class Department(BaseModel):
-    department_id: int = Field(alias="dep_id")
-    name: str
+    id: int
+    department: str
 
 # Class Department
 class Job(BaseModel):
-    job_id: int = Field(alias="job_id")
-    name: str
+    id: int
+    job: str
 
 # Class Department
 class Hired_Employee(BaseModel):
-    hired_employee_id: int = Field(alias="hie_id")
-    name: str
-    datetime: str
+    id: int
+    name: Union[str, None]
+    datetime: Union[str, None]
     department_id: Union[int, None]
     job_id: Union[int, None]
+
+# Class Requeriment_1
+class Requeriment_1(BaseModel):
+    department: str
+    job: str
+    q1: int
+    q2: int
+    q3: int
+    q4: int
 
 
 
@@ -70,11 +79,11 @@ def retrieve_table(cur, table):
     raw_ls = list(cur.fetchall())
     if len(raw_ls) > 0:
         if table=="departments":
-            output_ls = [Department(dep_id=elem[0], name=elem[1]) for elem in raw_ls]
+            output_ls = [Department(id=elem[0], department=elem[1]) for elem in raw_ls]
         if table=="jobs":
-            output_ls = [Job(job_id=elem[0], name=elem[1]) for elem in raw_ls]
+            output_ls = [Job(id=elem[0], job=elem[1]) for elem in raw_ls]
         if table=="hired_employees":
-            output_ls = [Hired_Employee(hie_id=elem[0], name=elem[1], datetime=elem[2], department_id=elem[3], job_id=elem[4]) for elem in raw_ls]
+            output_ls = [Hired_Employee(id=elem[0], name=elem[1], datetime=elem[2], department_id=elem[3], job_id=elem[4]) for elem in raw_ls]
         return output_ls
     else:
         return {"The table {} is empty".format(table)}
@@ -205,44 +214,99 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
 
 
 
+def requeriment_1(cur):
+
+    # Verify input data
+    
+    cur.execute("SELECT * FROM departments;")
+    cxn.commit()
+    ls_dep = list(cur.fetchall())
+
+    cur.execute("SELECT * FROM jobs;")
+    cxn.commit()
+    ls_job = list(cur.fetchall())
+
+    cur.execute("SELECT * FROM hired_employees;")
+    cxn.commit()
+    ls_job = list(cur.fetchall())
+
+    if (len(ls_dep) == 0) or (len(ls_job) == 0) or (len(ls_job) == 0):
+    
+        return {"It is not possible to execute the requirement. One or more of these tables (departments, jobs, hired_employees) do not have data loaded. Please load the respective data using http://127.0.0.1:8000/add_table"}
+    
+    else:
+
+        query = """
+        SELECT  
+            department, 
+            job,
+            sum((aux_table.quarter = 'Q1')::int) AS Q1,
+            sum((aux_table.quarter = 'Q2')::int) AS Q2,
+            sum((aux_table.quarter = 'Q3')::int) AS Q3,
+            sum((aux_table.quarter = 'Q4')::int) AS Q4
+        FROM (
+            SELECT  
+                d.department AS department,
+                j.job AS job,
+                CONCAT('Q',CAST(EXTRACT(QUARTER FROM CAST(h.datetime AS DATE)) AS TEXT)) AS quarter
+            FROM hired_employees AS h
+            INNER JOIN departments AS d 
+            ON h.department_id = d.id
+            INNER JOIN jobs AS j
+            ON h.job_id = j.id
+            WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+            ) AS aux_table
+        GROUP BY department, job
+        ORDER BY department, job
+        ;"""
+
+        cur.execute(query)
+        cxn.commit()
+        result_query_ls = list(cur.fetchall())
+        output = [Requeriment_1(department=elem[0], job=elem[1], q1=elem[2], q2=elem[3], q3=elem[4], q4=elem[5]) for elem in result_query_ls]
+
+        return output
+
+
+
 ### HTTP methods
 
-# GET request for retrieving the list of departments
+# GET method for retrieving the list of departments
 @app_globant.get("/departments")
 async def get_departments():
     # Call retrieve_table function
     return retrieve_table(cur, 'departments')
 
 
-# GET request for retrieving the list of jobs
+# GET method for retrieving the list of jobs
 @app_globant.get("/jobs")
 async def get_jobs():
     # Call retrieve_table function
     return retrieve_table(cur, 'jobs')
 
 
-# GET request for retrieving the list of departments
+# GET method for retrieving the list of departments
 @app_globant.get("/hired_employees")
 async def get_hired_employees():
     # Call retrieve_table function
     return retrieve_table(cur, 'hired_employees')
 
 
-# GET request for restoring a table
+# GET method for restoring a table
 @app_globant.get("/restore_table/{table}")
 async def restore_table(table):
     # Call restore_tb function
     return restore_tb(cur, table)
 
 
-# GET request for restoring a table
+# GET method for restoring a table
 @app_globant.get("/check_schema/{table}")
 async def check_schema(table):
     # Call check_sch function
     return check_sch(cur, table)
 
 
-# POST request to load data of a table into the database
+# POST method to load data of a table into the database
 @app_globant.post("/add_table", status_code=201)
 async def add_deparments(file: File, table: Table):
     # Load parameters
@@ -254,3 +318,9 @@ async def add_deparments(file: File, table: Table):
     # Call batch_load function
     return batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema)
 
+
+# GET method for requeriment 1
+@app_globant.get("/first_requirement")
+async def first_requirement():
+    # Call requeriment_1 function
+    return requeriment_1(cur)
