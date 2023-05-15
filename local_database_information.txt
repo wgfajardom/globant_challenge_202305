@@ -3,41 +3,163 @@
 # GlobantChallenge
 
 
-
 ### Login to PostgreSQL
 # psql -U postgres
 
 
-
 ### Creation of the database
-
 CREATE DATABASE globant
     WITH 
         ENCODING 'UTF-8'
 
 
-
 ### Change database
-
 \c globant
 
 
-
 ### Creation of tables in the database
-
-CREATE TABLE DEPARTMENTS( ID INT PRIMARY KEY NOT NULL, NAME TEXT );
-CREATE TABLE JOBS( ID INT PRIMARY KEY NOT NULL, NAME TEXT );
+CREATE TABLE DEPARTMENTS( ID INT PRIMARY KEY NOT NULL, DEPARTMENT TEXT );
+CREATE TABLE JOBS( ID INT PRIMARY KEY NOT NULL, JOB TEXT );
 CREATE TABLE HIRED_EMPLOYEES( ID INT PRIMARY KEY NOT NULL, NAME TEXT, DATETIME TEXT, DEPARTMENT_ID INT, JOB_ID INT );
 
 
-
 ### Update hired_employees table
-
 UPDATE hired_employees SET department_id = NULL WHERE department_id = -999;
 UPDATE hired_employees SET job_id = NULL WHERE job_id = -999;
 
 
-
 ### Check table schema
-
 SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'hired_employees' ORDER By ordinal_position;
+
+
+### Create extension for pivot table
+CREATE EXTENSION tablefunc;
+
+
+
+### Queries for the first requirement
+
+# 1.a. Checking null values
+SELECT COUNT(*) FROM hired_employees AS h
+WHERE (h.datetime IS NULL) OR (h.department_id IS NULL) OR (h.job_id IS NULL)
+;
+
+# 1.b. Count of resulting table after joins without considering null values
+SELECT 
+    COUNT(*)
+FROM hired_employees AS h
+LEFT JOIN departments AS d 
+ON h.department_id = d.id
+LEFT JOIN jobs AS j
+ON h.job_id = j.id
+WHERE (h.datetime IS NOT NULL) AND (h.department_id IS NOT NULL) AND (h.job_id IS NOT NULL)
+;
+
+# 1.c. Same as before but different syntax
+SELECT 
+    COUNT(*)
+FROM hired_employees AS h
+INNER JOIN departments AS d 
+ON h.department_id = d.id
+INNER JOIN jobs AS j
+ON h.job_id = j.id
+WHERE (h.datetime IS NOT NULL)
+;
+
+# 1.d. Full resulting table after inner joins
+SELECT 
+    h.id, 
+    h.name, 
+    EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) AS year, 
+    EXTRACT(MONTH FROM CAST(h.datetime AS DATE)) AS month, 
+    EXTRACT(QUARTER FROM CAST(h.datetime AS DATE)) AS quarter, 
+    d.department,
+    j.job
+FROM hired_employees AS h
+INNER JOIN departments AS d 
+ON h.department_id = d.id
+INNER JOIN jobs AS j
+ON h.job_id = j.id
+WHERE (h.datetime IS NOT NULL)
+;
+
+# 1.e. Adding temporal condition (year <= 2021)
+SELECT 
+    COUNT(*)
+FROM hired_employees AS h
+INNER JOIN departments AS d 
+ON h.department_id = d.id
+INNER JOIN jobs AS j
+ON h.job_id = j.id
+WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+;
+
+# 1.f. Close to final result, a pivot table is required
+SELECT  
+    d.department AS department,
+    j.job AS job,
+    CONCAT('Q',CAST(EXTRACT(QUARTER FROM CAST(h.datetime AS DATE)) AS TEXT)) AS quarter,
+    COUNT(h.id) AS number_employees
+FROM hired_employees AS h
+INNER JOIN departments AS d 
+ON h.department_id = d.id
+INNER JOIN jobs AS j
+ON h.job_id = j.id
+WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+GROUP BY department, job, quarter
+ORDER BY department, job, quarter
+;
+
+# Final Query for Requirement 1
+SELECT  
+    department, 
+    job,
+    sum((aux_table.quarter = 'Q1')::int) AS Q1,
+    sum((aux_table.quarter = 'Q2')::int) AS Q2,
+    sum((aux_table.quarter = 'Q3')::int) AS Q3,
+    sum((aux_table.quarter = 'Q4')::int) AS Q4
+FROM (
+    SELECT  
+        d.department AS department,
+        j.job AS job,
+        CONCAT('Q',CAST(EXTRACT(QUARTER FROM CAST(h.datetime AS DATE)) AS TEXT)) AS quarter
+    FROM hired_employees AS h
+    INNER JOIN departments AS d 
+    ON h.department_id = d.id
+    INNER JOIN jobs AS j
+    ON h.job_id = j.id
+    WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+    ) AS aux_table
+GROUP BY department, job
+ORDER BY department, job
+
+# Verification query. Same result as the one derived from 1.b and 1.c 
+SELECT 
+    SUM(result_table.Q1) AS cnt_q1,
+    SUM(result_table.Q2) AS cnt_q2,
+    SUM(result_table.Q3) AS cnt_q3,
+    SUM(result_table.Q4) AS cnt_q4,
+    SUM(result_table.Q1) + SUM(result_table.Q2) + SUM(result_table.Q3) + SUM(result_table.Q4) AS cnt_total
+FROM (
+    SELECT  
+    department, job,
+    sum((aux_table.quarter = 'Q1')::int) AS Q1,
+    sum((aux_table.quarter = 'Q2')::int) AS Q2,
+    sum((aux_table.quarter = 'Q3')::int) AS Q3,
+    sum((aux_table.quarter = 'Q4')::int) AS Q4
+    FROM (
+        SELECT  
+            d.department AS department,
+            j.job AS job,
+            CONCAT('Q',CAST(EXTRACT(QUARTER FROM CAST(h.datetime AS DATE)) AS TEXT)) AS quarter
+        FROM hired_employees AS h
+        INNER JOIN departments AS d 
+        ON h.department_id = d.id
+        INNER JOIN jobs AS j
+        ON h.job_id = j.id
+        WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+        ) AS aux_table
+    GROUP BY department, job
+    ORDER BY department, job
+    ) AS result_table
+;
