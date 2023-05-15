@@ -83,7 +83,7 @@ ON h.job_id = j.id
 WHERE (h.datetime IS NOT NULL)
 ;
 
-# 1.e. Adding temporal condition (year <= 2021)
+# 1.e. Adding temporal condition (year = 2021)
 SELECT 
     COUNT(*)
 FROM hired_employees AS h
@@ -91,7 +91,7 @@ INNER JOIN departments AS d
 ON h.department_id = d.id
 INNER JOIN jobs AS j
 ON h.job_id = j.id
-WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021)
 ;
 
 # 1.f. Close to final result, a pivot table is required
@@ -105,7 +105,7 @@ INNER JOIN departments AS d
 ON h.department_id = d.id
 INNER JOIN jobs AS j
 ON h.job_id = j.id
-WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021)
 GROUP BY department, job, quarter
 ORDER BY department, job, quarter
 ;
@@ -128,12 +128,12 @@ FROM (
     ON h.department_id = d.id
     INNER JOIN jobs AS j
     ON h.job_id = j.id
-    WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+    WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021)
     ) AS aux_table
 GROUP BY department, job
 ORDER BY department, job
 
-# Verification query. Same result as the one derived from 1.b and 1.c 
+# Verification query. Same result as the one derived from 1.e.
 SELECT 
     SUM(result_table.Q1) AS cnt_q1,
     SUM(result_table.Q2) AS cnt_q2,
@@ -157,9 +157,80 @@ FROM (
         ON h.department_id = d.id
         INNER JOIN jobs AS j
         ON h.job_id = j.id
-        WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+        WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021)
         ) AS aux_table
     GROUP BY department, job
     ORDER BY department, job
     ) AS result_table
+;
+
+
+
+### Queries for the second requirement
+
+# 2.a. Amount of hired employees by year
+SELECT 
+    EXTRACT(YEAR FROM CAST(datetime AS DATE)) AS year,
+    COUNT(*) AS number_employees
+FROM hired_employees
+WHERE datetime IS NOT NULL
+GROUP BY year
+ORDER BY year
+;
+
+# 2.b. Amount of hired employees by year, department_id must be not null
+SELECT 
+    EXTRACT(YEAR FROM CAST(datetime AS DATE)) AS year,
+    COUNT(*) AS number_employees
+FROM hired_employees
+WHERE (datetime IS NOT NULL) AND (department_id IS NOT NULL)
+GROUP BY year
+ORDER BY year
+;
+
+# 2.c. Amount of hired employees in 2021 by department
+SELECT 
+    department_id,
+    COUNT(*) AS number_employees
+FROM hired_employees
+WHERE (datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(datetime AS DATE)) = 2021) AND (department_id IS NOT NULL)
+GROUP BY department_id
+ORDER BY department_id
+;
+
+# 2.d. Mean of hired employees in 2021. Sum of employees is equal than in 2.b.
+SELECT 
+    AVG(employees_by_dep_2021.number_employees) AS avg_employees_2021,
+    SUM(employees_by_dep_2021.number_employees) AS sum_employees_2021
+FROM (
+    SELECT 
+        department_id,
+        COUNT(*) AS number_employees
+    FROM hired_employees
+    WHERE (datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(datetime AS DATE)) = 2021) AND (department_id IS NOT NULL)
+    GROUP BY department_id
+    ORDER BY department_id
+    ) AS employees_by_dep_2021
+;
+
+# 2.e. Mean of hired employees in 2021. Alternative method. 
+# Method proposed in case there is a department without hires. This would affect the average.
+SELECT (
+    CAST( (SELECT COUNT(id) AS number_employees FROM hired_employees WHERE (EXTRACT(YEAR FROM CAST(datetime AS DATE)) = 2021) AND (department_id IS NOT NULL)) AS FLOAT)
+    / 
+    CAST( (SELECT COUNT(id) AS number_departments FROM departments) AS FLOAT ) 
+    ) AS avg_employees_2021;
+
+# 2.f. Final Query for Requirement 2
+SELECT 
+    h.department_id AS id,
+    d.department AS department,
+    COUNT(h.id) AS hired
+FROM hired_employees AS h
+INNER JOIN departments AS d
+ON h.department_id=d.id
+WHERE (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021) AND (h.department_id IS NOT NULL)
+GROUP BY h.department_id, department
+HAVING COUNT(h.id) > (SELECT ( CAST( (SELECT COUNT(id) AS number_employees FROM hired_employees WHERE (EXTRACT(YEAR FROM CAST(datetime AS DATE)) = 2021) AND (department_id IS NOT NULL)) AS FLOAT) / CAST( (SELECT COUNT(id) AS number_departments FROM departments) AS FLOAT ) ))
+ORDER BY hired DESC
 ;
