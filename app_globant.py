@@ -2,12 +2,9 @@
 
 ### Import libraries
 from fastapi import FastAPI
-# from fastapi import Body
 from pydantic import BaseModel, Field
 from typing import Optional, Union
-# from typing import Annotated
 import pandas as pd
-# import numpy as np
 import psycopg2
 import psycopg2.extras as extras
 import sys
@@ -37,6 +34,7 @@ class File(BaseModel):
     sta_ind: Optional[int] = 1
     end_ind: Optional[int] = 1000
 
+# Class Table
 class Table(BaseModel):
     tablename: str
     tableschema: dict
@@ -67,6 +65,12 @@ class Requeriment_1(BaseModel):
     q2: int
     q3: int
     q4: int
+
+# Class Requeriment_2
+class Requeriment_2(BaseModel):
+    id: int
+    department: str
+    hired: int
 
 
 
@@ -132,9 +136,11 @@ def check_sch(cur, table):
 # Batch load to database (used by a POST method)
 def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
 
+    # Derived variables
     nrows = end_ind-sta_ind+1
     cols_table = list(tableschema.keys())
 
+    # Apply conditions regarding the size batch and the order of the indexes
     if (sta_ind >= 1) and (end_ind >= sta_ind) and (nrows <= 1000):  
 
         # Read file using range of indexes
@@ -151,6 +157,7 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
                 dc_null_placeholders[key] = null_ph_str
         df = df.fillna(value=dc_null_placeholders)
 
+        # Change schema based on the schema of the destination table
         try:
             df = df.astype(tableschema)
         except:
@@ -205,6 +212,7 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
         return response
     
     else:
+        # Exceptions due to indexes issues or batch size
         if nrows > 1000:
             return {"Consider that 1000 is the maximum amount of registers to load in a single request. You are trying to insert {} registers.".format(nrows)}
         elif sta_ind <= 0:
@@ -216,26 +224,25 @@ def batch_load(cur, filename, sta_ind, end_ind, tablename, tableschema):
 
 def requeriment_1(cur):
 
-    # Verify input data
-    
+    # Read input data
     cur.execute("SELECT * FROM departments;")
     cxn.commit()
     ls_dep = list(cur.fetchall())
-
     cur.execute("SELECT * FROM jobs;")
     cxn.commit()
     ls_job = list(cur.fetchall())
-
     cur.execute("SELECT * FROM hired_employees;")
     cxn.commit()
-    ls_job = list(cur.fetchall())
+    ls_hie = list(cur.fetchall())
 
-    if (len(ls_dep) == 0) or (len(ls_job) == 0) or (len(ls_job) == 0):
+    # Verify existence of input data
+    if (len(ls_dep) == 0) or (len(ls_job) == 0) or (len(ls_hie) == 0):
     
         return {"It is not possible to execute the requirement. One or more of these tables (departments, jobs, hired_employees) do not have data loaded. Please load the respective data using http://127.0.0.1:8000/add_table"}
     
     else:
 
+        # Query definition
         query = """
         SELECT  
             department, 
@@ -254,18 +261,62 @@ def requeriment_1(cur):
             ON h.department_id = d.id
             INNER JOIN jobs AS j
             ON h.job_id = j.id
-            WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) <= 2021)
+            WHERE (h.datetime IS NOT NULL) AND (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021)
             ) AS aux_table
         GROUP BY department, job
         ORDER BY department, job
         ;"""
 
+        # Query execution
         cur.execute(query)
         cxn.commit()
         result_query_ls = list(cur.fetchall())
         output = [Requeriment_1(department=elem[0], job=elem[1], q1=elem[2], q2=elem[3], q3=elem[4], q4=elem[5]) for elem in result_query_ls]
 
         return output
+
+
+
+def requeriment_2(cur):
+
+    # Read input data
+    cur.execute("SELECT * FROM departments;")
+    cxn.commit()
+    ls_dep = list(cur.fetchall())
+    cur.execute("SELECT * FROM hired_employees;")
+    cxn.commit()
+    ls_hie = list(cur.fetchall())
+
+    # Verify existence of input data
+    if (len(ls_dep) == 0)  or (len(ls_hie) == 0):
+    
+        return {"It is not possible to execute the requirement. One or both of these tables (departments and hired_employees) do not have data loaded. Please load the respective data using http://127.0.0.1:8000/add_table"}
+    
+    else:
+
+        # Query definition
+        query = """
+        SELECT 
+            h.department_id AS id,
+            d.department AS department,
+            COUNT(h.id) AS hired
+        FROM hired_employees AS h
+        INNER JOIN departments AS d
+        ON h.department_id=d.id
+        WHERE (EXTRACT(YEAR FROM CAST(h.datetime AS DATE)) = 2021) AND (h.department_id IS NOT NULL)
+        GROUP BY h.department_id, department
+        HAVING COUNT(h.id) > (SELECT ( CAST( (SELECT COUNT(id) AS number_employees FROM hired_employees WHERE (EXTRACT(YEAR FROM CAST(datetime AS DATE)) = 2021) AND (department_id IS NOT NULL)) AS FLOAT) / CAST( (SELECT COUNT(id) AS number_departments FROM departments) AS FLOAT ) ))
+        ORDER BY hired DESC
+        ;"""
+
+        # Query execution
+        cur.execute(query)
+        cxn.commit()
+        result_query_ls = list(cur.fetchall())
+        output = [Requeriment_2(id=elem[0], department=elem[1], hired=elem[2]) for elem in result_query_ls]
+
+        return output
+
 
 
 
@@ -324,3 +375,9 @@ async def add_deparments(file: File, table: Table):
 async def first_requirement():
     # Call requeriment_1 function
     return requeriment_1(cur)
+
+# GET method for requeriment 2
+@app_globant.get("/second_requirement")
+async def second_requirement():
+    # Call requeriment_2 function
+    return requeriment_2(cur)
